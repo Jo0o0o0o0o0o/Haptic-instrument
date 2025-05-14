@@ -457,7 +457,7 @@ int main(int argc, char* argv[])
     turntable->rotateAboutGlobalAxisDeg(cVector3d(1,0,0), 90);
 
     // load an object file
-    fileload = turntable->loadFromFile(currentpath + "../resources/models/turntable/drum_small.obj");
+    fileload = turntable->loadFromFile(currentpath + "../resources/models/turntable/drum_new.obj");
     if (!fileload)
     {
         printf("Error - 3D Model failed to load correctly.\n");
@@ -499,7 +499,7 @@ int main(int argc, char* argv[])
     cTexture2dPtr recordImage = cTexture2d::create();
 
     // load texture image from file
-    fileload = recordImage->loadFromFile(currentpath + "../resources/models/turntable/drum_texture.jpg");
+    fileload = recordImage->loadFromFile(currentpath + "../resources/models/turntable/drum_tex2.jpg");
     if (!fileload)
     {
         cout << "Error - Texture image failed to load correctly." << endl;
