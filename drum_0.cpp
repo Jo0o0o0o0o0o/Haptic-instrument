@@ -48,6 +48,7 @@
 //------------------------------------------------------------------------------
 #include <GLFW/glfw3.h>
 //------------------------------------------------------------------------------
+#include "math/CMaths.h"
 using namespace chai3d;
 using namespace std;
 //------------------------------------------------------------------------------
@@ -415,7 +416,7 @@ int main(int argc, char* argv[])
 
     // enable if objects in the scene are going to rotate of translate
     // or possibly collide against the tool. If the environment
-    // is entirely static, you can set this parameter to "false"
+    // is entirely static, you can set this parameter to "false"f
     tool->enableDynamicObjects(true);
 
     // map the physical workspace of the haptic device to a larger virtual workspace.
@@ -490,10 +491,29 @@ int main(int argc, char* argv[])
 
     // create a mesh for the vynil
     record = new cMesh();
-
+     
     // build mesh using primitives
-    cCreateCylinder(record, 0.0, 0.48, 36, 1, false, true);
-    cCreateDisk(record, 0.49, 0.49, 36, cVector3d(0,0,0.04));
+    cCreateCylinder(record, 0.01, 0.215, 36, 1, false, true);
+    cCreateDisk(record, 0.215, 0.215, 36, cVector3d(0,0,0));
+    //record->setTransparencyLevel(0.0);
+    cVector3d min, max;
+    turntable->computeBoundaryBox(true);
+    min = turntable->getBoundaryMin();
+    max = turntable->getBoundaryMax();
+    double size1 = cSub(turntable->getBoundaryMax(), turntable->getBoundaryMin()).length();
+
+    // domain in X, Y, Z
+    double xDomain = max.x() - min.x();
+    double yDomain = max.y() - min.y();
+    double zDomain = max.z() - min.z();
+    std::cout << (zDomain);
+    //record->setLocalPos(1.0, 0.0, 0.0);
+    cVector3d drumPos = turntable->getLocalPos();
+	double drumX = drumPos.x();
+	double drumY = drumPos.y();
+	double drumZ = drumPos.z();
+
+    record->setLocalPos(drumX, drumY, zDomain/2);
 
     // create texture image
     cTexture2dPtr recordImage = cTexture2d::create();
@@ -520,7 +540,7 @@ int main(int argc, char* argv[])
     world->addChild(record);
 
     // position vinyl
-    record->translate(-0.0, 0, 0.02);
+    record->translate(-0.0, 0, -0.065);
 
     // set stiffness properties
     record->setStiffness(maxStiffness, true);
@@ -546,7 +566,7 @@ int main(int argc, char* argv[])
     // create an audio buffer and load audio wave file
     audioBufferFwd = new cAudioBuffer();
 
-    fileload = audioBufferFwd->loadFromFile(currentpath + "../resources/sounds/classic.mp3");
+    fileload = audioBufferFwd->loadFromFile(currentpath + "../resources/sounds/tom.mp3");
     if (!fileload)
     {
         cout << "Error - Sound file failed to load or initialize correctly." << endl;
@@ -567,7 +587,7 @@ int main(int argc, char* argv[])
     audioSourceFwd->setPitch(0.0);
 
     // loop audio play
-    audioSourceFwd->setLoop(true);
+    //audioSourceFwd->setLoop(true);
 
     // start playing
     audioSourceFwd->play();
@@ -908,13 +928,17 @@ void renderHaptics(void)
             // compute a vector from the center of mass of the object (point of rotation) to the tool
             cVector3d vObjectCMToTool = cSub(toolPos, objectPos);
 
-            if (vObjectCMToTool.length() > 0)
+            cVector3d toolForce = -tool->getDeviceGlobalForce();
+
+            if (toolForce.length() > 0)
             {
                 // get the last force applied to the cursor in global coordinates
                 // we negate the result to obtain the opposite force that is applied on the
                 // object
-                cVector3d toolForce = -tool->getDeviceGlobalForce();
-
+                audioSourceFwd->setGain(0.1);
+                //audioSourceFwd->setPitch(0.1 * fabs(angVel));
+                
+                audioSourceFwd->play();
                 // compute effective force to take into account the fact the object
                 // can only rotate arround a its center mass and not translate
                 cVector3d effectiveForce = toolForce - cProject(toolForce, vObjectCMToTool);
