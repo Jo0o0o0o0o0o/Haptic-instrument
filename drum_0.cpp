@@ -533,6 +533,7 @@ int main(int argc, char* argv[])
     turntable->setUseTexture(true, true);
     turntable->setUseMaterial(true, true);
 
+
     // create collision detector
     record->createAABBCollisionDetector(toolRadius);
 
@@ -543,7 +544,7 @@ int main(int argc, char* argv[])
     record->translate(-0.0, 0, -0.065);
 
     // set stiffness properties
-    record->setStiffness(maxStiffness, true);
+    record->setStiffness(0.5 * maxStiffness, true);
 
     // set static and dynamic friction
     double staticFriction = (double)100 / 100.0;
@@ -584,13 +585,13 @@ int main(int argc, char* argv[])
     audioSourceFwd->setGain(10.0);
 
     // set speed at which the audio file is played. we will modulate this with the record speed.
-    audioSourceFwd->setPitch(0.0);
+    //audioSourceFwd->setPitch(0.0);
 
     // loop audio play
     //audioSourceFwd->setLoop(true);
 
     // start playing
-    audioSourceFwd->play();
+    //audioSourceFwd->play();
 
 
     //-----------------------------------------------------------------------
@@ -618,7 +619,7 @@ int main(int argc, char* argv[])
     audioSourceBwd->setGain(0.0);
 
     // set speed at which the audio file is played. we will modulate this with the record speed.
-    audioSourceBwd->setPitch(0.0);
+    //audioSourceBwd->setPitch(0.0);
 
     // loop audio play
     audioSourceBwd->setLoop(true);
@@ -861,6 +862,7 @@ void renderGraphics(void)
 
 //------------------------------------------------------------------------------
 
+
 void renderHaptics(void)
 {
     // reset clock
@@ -909,6 +911,7 @@ void renderHaptics(void)
         tool->applyToDevice();
 
 
+
         /////////////////////////////////////////////////////////////////////
         // ANIMATION
         /////////////////////////////////////////////////////////////////////
@@ -916,88 +919,103 @@ void renderHaptics(void)
         // init
         cVector3d torque(0,0,0);
 
+        cVector3d toolForce = -tool->getDeviceGlobalForce();
+
+        bool wasInContactLastFrame = false;
+
+        bool isInContactNow = tool->isInContact(record);
+
+
         // figure out if we're touching the record
-        if (tool->isInContact(record))
+        if (isInContactNow && !wasInContactLastFrame)
         {
-            // get position of cursor in global coordinates
-            cVector3d toolPos = tool->getDeviceGlobalPos();
-
-            // get position of object in global coordinates
-            cVector3d objectPos = record->getGlobalPos();
-
-            // compute a vector from the center of mass of the object (point of rotation) to the tool
-            cVector3d vObjectCMToTool = cSub(toolPos, objectPos);
-
+            wasInContactLastFrame = true;
             cVector3d toolForce = -tool->getDeviceGlobalForce();
+			//cout << "Force: " << toolForce.length() << endl;
+            //double impactThreshold = 0.5; // adjust sensitivity if needed
 
             if (toolForce.length() > 0)
             {
-                // get the last force applied to the cursor in global coordinates
-                // we negate the result to obtain the opposite force that is applied on the
-                // object
-                audioSourceFwd->setGain(0.1);
-                //audioSourceFwd->setPitch(0.1 * fabs(angVel));
-                
+                // Restart tom.mp3 playback immediately on first contact
+                audioSourceFwd->stop();  // Reset playback
+                audioSourceFwd->setGain(toolForce.length()*0.1);
+                //audioSourceFwd->setPitch(1.0);
                 audioSourceFwd->play();
-                // compute effective force to take into account the fact the object
-                // can only rotate arround a its center mass and not translate
-                cVector3d effectiveForce = toolForce - cProject(toolForce, vObjectCMToTool);
-
-                // compute the resulting torque
-                torque = cMul(vObjectCMToTool.length(), cCross( cNormalize(vObjectCMToTool), effectiveForce));
             }
+            // Get global positions
+            cVector3d toolPos = tool->getDeviceGlobalPos();
+            cVector3d recordPos = record->getGlobalPos();
+
+            // Only consider vertical direction (Z)
+            double penetration = recordPos.z() + 0.01 - toolPos.z(); // 0.01 = vinyl thickness offset
+
+            // If tool is inside the record surface, apply bounce force
+            double stiffness = 1000.0;  // Higher = stronger bounce
+            double bounceForceZ = stiffness * penetration;
+			cout << "Bounce Force: " << bounceForceZ << endl;
+
+            // Apply upward force only
+            cVector3d bounceForce(0.0, 0.0, bounceForceZ);
+            cVector3d basePos = record->getLocalPos();
+            tool->setLocalPos(basePos.x(), basePos.y(), basePos.z() + 0.5);
+		}
+		
+
+        /*
+/////////////////////////////////////////////////////////////////////
+// BOUNCE SIMULATION
+/////////////////////////////////////////////////////////////////////
+
+        // Bounce physics variables
+        double bounceZ = 1.0;
+        double bounceVelZ = 0.0;
+        double recordMass = 0.1;           // in kg
+        double springK = 50.0;            // spring stiffness
+        double damping = 1.0;              // damping coefficient
+        double gravity = -9.81;            // optional gravity
+        tool->applyToDevice();
+// Get contact force
+        cVector3d contactForce(0, 0, 0);
+        if (tool->isInContact(record))
+        {
+            contactForce = -tool->getDeviceGlobalForce();
         }
+
+        // Only vertical (Z) force affects bounce
+        double forceZ = contactForce.z();
+
+        // Apply spring-damper physics (F = m*a)
+        double accZ = (forceZ - springK * bounceZ - damping * bounceVelZ) / recordMass;
+
+        // Integrate velocity and position
+        bounceVelZ += accZ * timeInterval;
+        bounceZ += bounceVelZ * timeInterval;
+
+        // Clamp bounce to avoid sinking
+        if (bounceZ < 0.0)
+        {
+            bounceZ = 0.0;
+            bounceVelZ = 0.0;
+        }
+        
+        */
+        wasInContactLastFrame = isInContactNow;
+}
+        
 
         // update rotational acceleration
-        const double OBJECT_INERTIA = 0.02;
-        double angAcc = (1.0 / OBJECT_INERTIA) * torque.z();
 
         // update rotational velocity
-        angVel = angVel + timeInterval * angAcc;
 
         // set a threshold on the rotational velocity term
-        const double ANG_VEL_MAX = 20.0;
-
-        if (angVel > ANG_VEL_MAX)
-        {
-            angVel = ANG_VEL_MAX;
-        }
-        else if (angVel < -ANG_VEL_MAX)
-        {
-            angVel = -ANG_VEL_MAX;
-        }
 
         // compute the next rotation of the torus
-        angPos = angPos + timeInterval * angVel;
 
         // update position of record
-        cMatrix3d rot;
-        rot.identity();
-        rot.rotateAboutGlobalAxisRad(cVector3d(0,0,1), angPos);
-        record->setLocalRot(rot);
+
 
         // set audio pitch and volume of forward and backward soundtrack based on rotational velocity
-        if (angVel < 0)
-        {
-            // modulate pitch of forward track
-            audioSourceFwd->setGain(10);
-            audioSourceFwd->setPitch(0.1 * fabs(angVel));
 
-            // disable volume of backward track and align with forward track
-            audioSourceBwd->setGain(0);
-            audioSourceBwd->setPosTime(audioSourceFwd->getAudioBuffer()->getDuration() - audioSourceFwd->getPosTime());
-        }
-        else
-        {
-            // modulate pitch of backward track
-            audioSourceBwd->setGain(10);
-            audioSourceBwd->setPitch(0.1 * fabs(angVel));
-
-            // disable volume of forward track and align with backward track
-            audioSourceFwd->setGain(0);
-            audioSourceFwd->setPosTime(audioSourceBwd->getAudioBuffer()->getDuration() - audioSourceBwd->getPosTime());
-        }
-    }
 
     // exit haptics thread
     simulationFinished = true;
