@@ -49,6 +49,10 @@
 #include <GLFW/glfw3.h>
 //------------------------------------------------------------------------------
 #include "math/CMaths.h"
+#include <iostream>
+#include <time.h>
+#include <random>
+using namespace Eigen::internal;
 using namespace chai3d;
 using namespace std;
 //------------------------------------------------------------------------------
@@ -121,11 +125,11 @@ cAudioDevice* audioDevice;
 
 // audio buffers to store a forward and backward sound files
 cAudioBuffer* audioBufferFwd;
-cAudioBuffer* audioBufferBwd;
+cAudioBuffer* audioBufferRim;
 
 // audio sources which plays the forward and backward audio buffers
 cAudioSource* audioSourceFwd;
-cAudioSource* audioSourceBwd;
+cAudioSource* audioSourceRim;
 
 // Global variables for the audio stream
 int record_direction = 1;
@@ -599,9 +603,9 @@ int main(int argc, char* argv[])
     //-----------------------------------------------------------------------
 
     // create an audio buffer and load audio wave file
-    audioBufferBwd = new cAudioBuffer();
+    audioBufferRim = new cAudioBuffer();
 
-    fileload = audioBufferBwd->loadFromFile(currentpath + "../resources/sounds/classic-bwd.mp3");
+    fileload = audioBufferRim->loadFromFile(currentpath + "../resources/sounds/rim.mp3");
     if (!fileload)
     {
         cout << "Error - Sound file failed to load or initialize correctly." << endl;
@@ -610,22 +614,22 @@ int main(int argc, char* argv[])
     }
 
     // create audio source
-    audioSourceBwd = new cAudioSource();
+    audioSourceRim = new cAudioSource();
 
     // assign auio buffer to audio source
-    audioSourceBwd->setAudioBuffer(audioBufferBwd);
+    audioSourceRim->setAudioBuffer(audioBufferRim);
 
     // set volume
-    audioSourceBwd->setGain(0.0);
+    audioSourceRim->setGain(10.0);
 
     // set speed at which the audio file is played. we will modulate this with the record speed.
     //audioSourceBwd->setPitch(0.0);
 
     // loop audio play
-    audioSourceBwd->setLoop(true);
+    //audioSourceRim->setLoop(true);
 
     // start playing
-    audioSourceBwd->play();
+    audioSourceRim->play();
 
 
     //--------------------------------------------------------------------------
@@ -808,9 +812,9 @@ void close(void)
     delete handler;
     delete audioDevice;
     delete audioBufferFwd;
-    delete audioBufferBwd;
+    delete audioBufferRim;
     delete audioSourceFwd;
-    delete audioSourceBwd;
+    delete audioSourceRim;
 }
 
 //------------------------------------------------------------------------------
@@ -921,15 +925,19 @@ void renderHaptics(void)
 
         cVector3d toolForce = -tool->getDeviceGlobalForce();
 
-        bool wasInContactLastFrame = false;
+        bool wasInContactLastFrameMem = false;
 
-        bool isInContactNow = tool->isInContact(record);
+        bool isInContactNowMem = tool->isInContact(record);
+
+        bool wasInContactLastFrameRim = false;
+
+        bool isInContactNowRim = tool->isInContact(turntable);
 
 
         // figure out if we're touching the record
-        if (isInContactNow && !wasInContactLastFrame)
+        if (isInContactNowMem && !wasInContactLastFrameMem)
         {
-            wasInContactLastFrame = true;
+            wasInContactLastFrameMem = true;
             cVector3d toolForce = -tool->getDeviceGlobalForce();
 			//cout << "Force: " << toolForce.length() << endl;
             //double impactThreshold = 0.5; // adjust sensitivity if needed
@@ -950,16 +958,45 @@ void renderHaptics(void)
             double penetration = recordPos.z() + 0.01 - toolPos.z(); // 0.01 = vinyl thickness offset
 
             // If tool is inside the record surface, apply bounce force
-            double stiffness = 1000.0;  // Higher = stronger bounce
+            double stiffness = 50.0;  // Higher = stronger bounce
             double bounceForceZ = stiffness * penetration;
 			cout << "Bounce Force: " << bounceForceZ << endl;
+            const long max_rand = 5;
+            double random_double_x = 0.1
+                + (0.3)
+                * (rand() % max_rand)
+                / max_rand;
+            double random_double_y = 0.1
+                + (0.3)
+                * (rand() % max_rand)
+                / max_rand;
 
+			tool->setDeviceGlobalForce(random_double_x * bounceForceZ, random_double_y * bounceForceZ, bounceForceZ);
             // Apply upward force only
-            cVector3d bounceForce(0.0, 0.0, bounceForceZ);
-            cVector3d basePos = record->getLocalPos();
-            tool->setLocalPos(basePos.x(), basePos.y(), basePos.z() + 0.5);
+            //cVector3d bounceForce(0.0, 0.0, bounceForceZ);
+            //cVector3d basePos = record->getLocalPos();
+            //tool->setLocalPos(basePos.x(), basePos.y(), basePos.z() + 0.5);
 		}
-		
+        else if (isInContactNowRim && !wasInContactLastFrameRim)
+        {
+            wasInContactLastFrameRim = true;
+            cVector3d toolForce = -tool->getDeviceGlobalForce();
+            //cout << "Force: " << toolForce.length() << endl;
+            //double impactThreshold = 0.5; // adjust sensitivity if needed
+            audioSourceRim->setGain(10.0);
+            audioSourceRim->play();
+			cout << "Rim contact" << endl;
+            /*
+            if (toolForce.length() > 0)
+            {
+                // Restart tom.mp3 playback immediately on first contact
+                audioSourceRim->stop();  // Reset playback
+                audioSourceRim->setGain(toolForce.length() * 0.1);
+                //audioSourceFwd->setPitch(1.0);
+                audioSourceRim->play();
+            }
+            */
+        }
 
         /*
 /////////////////////////////////////////////////////////////////////
@@ -999,7 +1036,8 @@ void renderHaptics(void)
         }
         
         */
-        wasInContactLastFrame = isInContactNow;
+        //wasInContactLastFrameMem = isInContactNowMem;
+        //wasInContactLastFrameRim = isInContactNowRim;
 }
         
 
