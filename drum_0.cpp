@@ -33,7 +33,7 @@
     CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
     LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
     ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-    POSSIBILITY OF SUCH DAMAGE. 
+    POSSIBILITY OF SUCH DAMAGE.
 
     \author    <http://www.chai3d.org>
     \author    Federico Barbagli
@@ -63,7 +63,7 @@ using namespace std;
 
 // stereo Mode
 /*
-    C_STEREO_DISABLED:            Stereo is disabled 
+    C_STEREO_DISABLED:            Stereo is disabled
     C_STEREO_ACTIVE:              Active stereo for OpenGL NVDIA QUADRO cards
     C_STEREO_PASSIVE_LEFT_RIGHT:  Passive stereo where L/R images are rendered next to each other
     C_STEREO_PASSIVE_TOP_BOTTOM:  Passive stereo where L/R images are rendered above each other
@@ -91,7 +91,7 @@ cCamera* camera;
 cViewport* viewport = nullptr;
 
 // a light source to illuminate the objects in the virtual scene
-cSpotLight *light;
+cSpotLight* light;
 
 // a haptic device handler
 cHapticDeviceHandler* handler;
@@ -114,11 +114,14 @@ cLabel* labelRates;
 // a scope to monitor the sound signal
 cScope* scope;
 
-// a virtual turntable
-cMultiMesh* turntable;
+// a virtual body
+cMultiMesh* body;
 
 // a virtual vinyl
-cMesh* record;
+cMesh* membrane;
+
+// a virtual Rim
+cMesh* rim;
 
 // audio device to play sound
 cAudioDevice* audioDevice;
@@ -132,13 +135,13 @@ cAudioSource* audioSourceFwd;
 cAudioSource* audioSourceRim;
 
 // Global variables for the audio stream
-int record_direction = 1;
+int membrane_direction = 1;
 unsigned int pos = 0;
 
-// angular velocity of the record
+// angular velocity of the membrane
 double angVel = 0;
 
-// angular position of the record
+// angular position of the membrane
 double angPos = 0;
 
 // a flag that indicates if the haptic simulation is currently running
@@ -205,7 +208,7 @@ void close(void);
     DEMO:    turntable.cpp
 
     This example demonstrates the use of friction, animation, and
-    sound effects.  With the haptic device you can spin the record
+    sound effects.  With the haptic device you can spin the membrane
     back and forth and at different speeds.
 */
 //==============================================================================
@@ -342,9 +345,9 @@ int main(int argc, char* argv[])
     world->addChild(camera);
 
     // position and orient the camera
-    camera->set(cVector3d (1.70, 0.14, 1.10),    // camera position (eye)
-                cVector3d (0.20, 0.14,-0.10),    // lookat position (target)
-                cVector3d (0.00, 0.00, 1.00));   // direction of the (up) vector
+    camera->set(cVector3d(1.70 * 0.5, 0.14, 1.10 * 0.8),    // camera position (eye)
+        cVector3d(0, 0, 0),    // lookat position (target)
+        cVector3d(0.00, 0.00, 1.00));   // direction of the (up) vector
 
     // set the near and far clipping planes of the camera
     // anything in front or behind these clipping planes will not be rendered
@@ -373,7 +376,7 @@ int main(int argc, char* argv[])
     light->setLocalPos(1.5, 0.40, 1.5);
 
     // define the direction of the light beam
-    light->setDir(-2.0,-0.5,-2.0);
+    light->setDir(-2.0, -0.5, -2.0);
 
     // enable this light source to generate shadows
     light->setShadowMapEnabled(true);
@@ -444,25 +447,25 @@ int main(int argc, char* argv[])
     double workspaceScaleFactor = tool->getWorkspaceScaleFactor();
 
     // stiffness properties
-    double maxStiffness	= hapticDeviceInfo.m_maxLinearStiffness / workspaceScaleFactor;
+    double maxStiffness = hapticDeviceInfo.m_maxLinearStiffness / workspaceScaleFactor;
 
 
     /////////////////////////////////////////////////////////////////////////
-    // TURNTABLE OBJECT
+    // BODY OBJECT
     /////////////////////////////////////////////////////////////////////////
 
     // create a virtual mesh
-    turntable = new cMultiMesh();
+    body = new cMultiMesh();
 
     // add object to world
-    world->addChild(turntable);
+    world->addChild(body);
 
-    // set the position of turntable object at the center of the world
-    turntable->setLocalPos(0.0, 0.0, 0.0);
-    turntable->rotateAboutGlobalAxisDeg(cVector3d(1,0,0), 90);
+    // set the position of body object at the center of the world
+    body->setLocalPos(0.0, 0.0, 0.0);
+    body->rotateAboutGlobalAxisDeg(cVector3d(1, 0, 0), 90);
 
     // load an object file
-    fileload = turntable->loadFromFile(currentpath + "../resources/models/turntable/drum_new.obj");
+    fileload = body->loadFromFile(currentpath + "../resources/models/turntable/drum_new.obj");
     if (!fileload)
     {
         printf("Error - 3D Model failed to load correctly.\n");
@@ -471,59 +474,67 @@ int main(int argc, char* argv[])
     }
 
     // compute a boundary box
-    turntable->computeBoundaryBox(true);
+    body->computeBoundaryBox(true);
 
     // get dimensions of object
-    double size = cSub(turntable->getBoundaryMax(), turntable->getBoundaryMin()).length();
+    double size = cSub(body->getBoundaryMax(), body->getBoundaryMin()).length();
 
     // resize object to screen
     if (size > 0)
     {
-        turntable->scale(0.5);
+        body->scale(0.5);
     }
 
     // setup collision detection algorithm
-    turntable->createAABBCollisionDetector(toolRadius);
+    body->createAABBCollisionDetector(toolRadius);
 
     // define a default stiffness for the object
-    turntable->setStiffness(0.8 * maxStiffness, true);
+    body->setStiffness(0.8 * maxStiffness, true);
 
+
+    /////////////////////////////////////////////////////////////////////////
+    // RIM OBJECT
+    /////////////////////////////////////////////////////////////////////////
+
+    rim = new cMesh();
+    cCreatePipe(rim, 0.15, 0.05, 0.06, 32, 1);
 
     /////////////////////////////////////////////////////////////////////////
     // VINYL OBJECT
     /////////////////////////////////////////////////////////////////////////
 
     // create a mesh for the vynil
-    record = new cMesh();
-     
+    membrane = new cMesh();
+
     // build mesh using primitives
-    cCreateCylinder(record, 0.01, 0.215, 36, 1, false, true);
-    cCreateDisk(record, 0.215, 0.215, 36, cVector3d(0,0,0));
-    //record->setTransparencyLevel(0.0);
+    cCreateCylinder(membrane, 0.01, 0.215, 36, 1, false, true);
+    cCreateDisk(membrane, 0.215, 0.215, 36, cVector3d(0, 0, 0));
+    //membrane->setTransparencyLevel(0.0);
     cVector3d min, max;
-    turntable->computeBoundaryBox(true);
-    min = turntable->getBoundaryMin();
-    max = turntable->getBoundaryMax();
-    double size1 = cSub(turntable->getBoundaryMax(), turntable->getBoundaryMin()).length();
+    body->computeBoundaryBox(true);
+    min = body->getBoundaryMin();
+    max = body->getBoundaryMax();
+    double size1 = cSub(body->getBoundaryMax(), body->getBoundaryMin()).length();
 
     // domain in X, Y, Z
     double xDomain = max.x() - min.x();
     double yDomain = max.y() - min.y();
     double zDomain = max.z() - min.z();
     std::cout << (zDomain);
-    //record->setLocalPos(1.0, 0.0, 0.0);
-    cVector3d drumPos = turntable->getLocalPos();
-	double drumX = drumPos.x();
-	double drumY = drumPos.y();
-	double drumZ = drumPos.z();
+    //membrane->setLocalPos(1.0, 0.0, 0.0);
+    cVector3d drumPos = body->getLocalPos();
+    double drumX = drumPos.x();
+    double drumY = drumPos.y();
+    double drumZ = drumPos.z();
 
-    record->setLocalPos(drumX, drumY, zDomain/2);
+    membrane->setLocalPos(drumX, drumY, zDomain / 2);
+	rim->setLocalPos(drumX, drumY, zDomain / 2 + 1);
 
     // create texture image
-    cTexture2dPtr recordImage = cTexture2d::create();
+    cTexture2dPtr drumImage = cTexture2d::create();
 
     // load texture image from file
-    fileload = recordImage->loadFromFile(currentpath + "../resources/models/turntable/drum_tex2.jpg");
+    fileload = drumImage->loadFromFile(currentpath + "../resources/models/turntable/drum_tex2.jpg");
     if (!fileload)
     {
         cout << "Error - Texture image failed to load correctly." << endl;
@@ -532,28 +543,33 @@ int main(int argc, char* argv[])
     }
 
     // set material properties
-    turntable->m_material->setWhite();
-    turntable->setTexture(recordImage);
-    turntable->setUseTexture(true, true);
-    turntable->setUseMaterial(true, true);
+    body->m_material->setWhite();
+    body->setTexture(drumImage);
+    body->setUseTexture(true, true);
+    body->setUseMaterial(true, true);
 
 
     // create collision detector
-    record->createAABBCollisionDetector(toolRadius);
+    membrane->createAABBCollisionDetector(toolRadius);
+	rim->createAABBCollisionDetector(toolRadius);
 
     // add vynil to world
-    world->addChild(record);
+    world->addChild(membrane);
+	world->addChild(rim);
 
     // position vinyl
-    record->translate(-0.0, 0, -0.065);
+    membrane->translate(-0.0, 0, -0.065);
+	rim->translate(-0.0, 0, -2);
 
     // set stiffness properties
-    record->setStiffness(0.5 * maxStiffness, true);
+    membrane->setStiffness(0.5 * maxStiffness, true);
+	rim->setStiffness(0.5 * maxStiffness, true);
 
     // set static and dynamic friction
     double staticFriction = (double)100 / 100.0;
     double dynamicFriction = (double)100 / 100.0;
-    record->setFriction(staticFriction, dynamicFriction, true);
+    membrane->setFriction(staticFriction, dynamicFriction, true);
+	rim->setFriction(staticFriction, dynamicFriction, true);
 
 
     /////////////////////////////////////////////////////////////////////////
@@ -588,7 +604,7 @@ int main(int argc, char* argv[])
     // set volume
     audioSourceFwd->setGain(10.0);
 
-    // set speed at which the audio file is played. we will modulate this with the record speed.
+    // set speed at which the audio file is played. we will modulate this with the membrane speed.
     //audioSourceFwd->setPitch(0.0);
 
     // loop audio play
@@ -622,7 +638,7 @@ int main(int argc, char* argv[])
     // set volume
     audioSourceRim->setGain(10.0);
 
-    // set speed at which the audio file is played. we will modulate this with the record speed.
+    // set speed at which the audio file is played. we will modulate this with the membrane speed.
     //audioSourceBwd->setPitch(0.0);
 
     // loop audio play
@@ -638,7 +654,7 @@ int main(int argc, char* argv[])
 
     // create a font
     font = NEW_CFONT_CALIBRI_20();
-    
+
     // create a label to display the haptic and graphic rate of the simulation
     labelRates = new cLabel(font);
     labelRates->m_fontColor.setBlack();
@@ -650,9 +666,9 @@ int main(int argc, char* argv[])
 
     // set background properties
     background->setCornerColors(cColorf(1.0f, 1.0f, 1.0f),
-                                cColorf(1.0f, 1.0f, 1.0f),
-                                cColorf(0.8f, 0.8f, 0.8f),
-                                cColorf(0.8f, 0.8f, 0.8f));
+        cColorf(1.0f, 1.0f, 1.0f),
+        cColorf(0.8f, 0.8f, 0.8f),
+        cColorf(0.8f, 0.8f, 0.8f));
 
 
     //--------------------------------------------------------------------------
@@ -869,16 +885,20 @@ void renderGraphics(void)
 
 void renderHaptics(void)
 {
+
     // reset clock
     cPrecisionClock clock;
     clock.reset();
+    static cVector3d prevToolPos = tool->getDeviceGlobalPos();
+    cVector3d currToolPos = tool->getDeviceGlobalPos();
+	static double prevTime = clock.getCurrentTimeSeconds();
 
     // simulation in now running
-    simulationRunning  = true;
+    simulationRunning = true;
     simulationFinished = false;
 
     // main haptic simulation loop
-    while(simulationRunning)
+    while (simulationRunning)
     {
         /////////////////////////////////////////////////////////////////////
         // SIMULATION TIME
@@ -921,46 +941,62 @@ void renderHaptics(void)
         /////////////////////////////////////////////////////////////////////
 
         // init
-        cVector3d torque(0,0,0);
+        cVector3d torque(0, 0, 0);
 
         cVector3d toolForce = -tool->getDeviceGlobalForce();
 
         bool wasInContactLastFrameMem = false;
 
-        bool isInContactNowMem = tool->isInContact(record);
+        bool isInContactNowMem = tool->isInContact(membrane);
 
         bool wasInContactLastFrameRim = false;
 
-        bool isInContactNowRim = tool->isInContact(turntable);
+        bool isInContactNowRim = tool->isInContact(body);
 
 
-        // figure out if we're touching the record
+        // figure out if we're touching the membrane
         if (isInContactNowMem && !wasInContactLastFrameMem)
         {
             wasInContactLastFrameMem = true;
+            cVector3d currToolPos = tool->getDeviceGlobalPos();
+            double currTime = clock.getCurrentTimeSeconds();
+
+            // Compute velocity
+            double deltaTime = currTime - prevTime;
+            cVector3d toolVelocity(0, 0, 0);
+            if (deltaTime > 1e-6) {
+                toolVelocity = (currToolPos - prevToolPos) / deltaTime;
+            }
+			cout << "Tool Velocity: " << toolVelocity << endl;
+
+            // Save for next iteration
+            prevToolPos = currToolPos;
+            prevTime = currTime;
             cVector3d toolForce = -tool->getDeviceGlobalForce();
-			//cout << "Force: " << toolForce.length() << endl;
+            //cout << "Force: " << toolForce.length() << endl;
             //double impactThreshold = 0.5; // adjust sensitivity if needed
 
-            if (toolForce.length() > 0)
+            if (toolVelocity.length() > 0)
             {
                 // Restart tom.mp3 playback immediately on first contact
-                audioSourceFwd->stop();  // Reset playback
-                audioSourceFwd->setGain(toolForce.length()*0.1);
+                //audioSourceFwd->stop();  // Reset playback
+                audioSourceFwd->setGain(toolVelocity.length() * 0.1);
                 //audioSourceFwd->setPitch(1.0);
                 audioSourceFwd->play();
+                
             }
             // Get global positions
             cVector3d toolPos = tool->getDeviceGlobalPos();
-            cVector3d recordPos = record->getGlobalPos();
+            cVector3d membranePos = membrane->getGlobalPos();
 
             // Only consider vertical direction (Z)
-            double penetration = recordPos.z() + 0.01 - toolPos.z(); // 0.01 = vinyl thickness offset
+            double penetration = membranePos.z() + 0.01 - toolPos.z(); // 0.01 = vinyl thickness offset
 
-            // If tool is inside the record surface, apply bounce force
+            // If tool is inside the membrane surface, apply bounce force
+
             double stiffness = 50.0;  // Higher = stronger bounce
             double bounceForceZ = stiffness * penetration;
-			cout << "Bounce Force: " << bounceForceZ << endl;
+            cout << "Bounce Force: " << bounceForceZ << endl;
             const long max_rand = 5;
             double random_double_x = 0.1
                 + (0.3)
@@ -971,21 +1007,44 @@ void renderHaptics(void)
                 * (rand() % max_rand)
                 / max_rand;
 
-			tool->setDeviceGlobalForce(random_double_x * bounceForceZ, random_double_y * bounceForceZ, bounceForceZ);
+            tool->setDeviceGlobalForce(random_double_x * bounceForceZ, random_double_y * bounceForceZ, bounceForceZ);
             // Apply upward force only
             //cVector3d bounceForce(0.0, 0.0, bounceForceZ);
-            //cVector3d basePos = record->getLocalPos();
+            //cVector3d basePos = membrane->getLocalPos();
             //tool->setLocalPos(basePos.x(), basePos.y(), basePos.z() + 0.5);
-		}
+        }
         else if (isInContactNowRim && !wasInContactLastFrameRim)
         {
             wasInContactLastFrameRim = true;
             cVector3d toolForce = -tool->getDeviceGlobalForce();
             //cout << "Force: " << toolForce.length() << endl;
             //double impactThreshold = 0.5; // adjust sensitivity if needed
-            audioSourceRim->setGain(10.0);
-            audioSourceRim->play();
-			cout << "Rim contact" << endl;
+            cVector3d currToolPos = tool->getDeviceGlobalPos();
+            double currTime = clock.getCurrentTimeSeconds();
+
+            // Compute velocity
+            double deltaTime = currTime - prevTime;
+            cVector3d toolVelocity(0, 0, 0);
+            if (deltaTime > 1e-6) {
+                toolVelocity = (currToolPos - prevToolPos) / deltaTime;
+            }
+            cout << "Tool Velocity: " << toolVelocity << endl;
+
+            // Save for next iteration
+            prevToolPos = currToolPos;
+            prevTime = currTime;
+            //cout << "Force: " << toolForce.length() << endl;
+            //double impactThreshold = 0.5; // adjust sensitivity if needed
+
+            if (toolVelocity.length() > 0)
+            {
+                // Restart tom.mp3 playback immediately on first contact
+                //audioSourceFwd->stop();  // Reset playback
+                audioSourceFwd->setGain(toolVelocity.length() * 0.1);
+                //audioSourceFwd->setPitch(1.0);
+                audioSourceFwd->play();
+			}
+
             /*
             if (toolForce.length() > 0)
             {
@@ -997,6 +1056,7 @@ void renderHaptics(void)
             }
             */
         }
+      
 
         /*
 /////////////////////////////////////////////////////////////////////
@@ -1006,14 +1066,14 @@ void renderHaptics(void)
         // Bounce physics variables
         double bounceZ = 1.0;
         double bounceVelZ = 0.0;
-        double recordMass = 0.1;           // in kg
+        double membraneMass = 0.1;           // in kg
         double springK = 50.0;            // spring stiffness
         double damping = 1.0;              // damping coefficient
         double gravity = -9.81;            // optional gravity
         tool->applyToDevice();
 // Get contact force
         cVector3d contactForce(0, 0, 0);
-        if (tool->isInContact(record))
+        if (tool->isInContact(membrane))
         {
             contactForce = -tool->getDeviceGlobalForce();
         }
@@ -1022,7 +1082,7 @@ void renderHaptics(void)
         double forceZ = contactForce.z();
 
         // Apply spring-damper physics (F = m*a)
-        double accZ = (forceZ - springK * bounceZ - damping * bounceVelZ) / recordMass;
+        double accZ = (forceZ - springK * bounceZ - damping * bounceVelZ) / membraneMass;
 
         // Integrate velocity and position
         bounceVelZ += accZ * timeInterval;
@@ -1034,28 +1094,28 @@ void renderHaptics(void)
             bounceZ = 0.0;
             bounceVelZ = 0.0;
         }
-        
+
         */
         //wasInContactLastFrameMem = isInContactNowMem;
         //wasInContactLastFrameRim = isInContactNowRim;
-}
-        
-
-        // update rotational acceleration
-
-        // update rotational velocity
-
-        // set a threshold on the rotational velocity term
-
-        // compute the next rotation of the torus
-
-        // update position of record
+    }
 
 
-        // set audio pitch and volume of forward and backward soundtrack based on rotational velocity
+    // update rotational acceleration
+
+    // update rotational velocity
+
+    // set a threshold on the rotational velocity term
+
+    // compute the next rotation of the torus
+
+    // update position of membrane
 
 
-    // exit haptics thread
+    // set audio pitch and volume of forward and backward soundtrack based on rotational velocity
+
+
+// exit haptics thread
     simulationFinished = true;
 }
 
