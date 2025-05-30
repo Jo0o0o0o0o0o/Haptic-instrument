@@ -76,7 +76,8 @@ bool fullscreen = false;
 // mirrored display
 bool mirroredDisplay = false;
 
-
+bool wasInContactLastFrameMem = false;
+bool wasInContactLastFrameRim = false;
 //------------------------------------------------------------------------------
 // DECLARED VARIABLES
 //------------------------------------------------------------------------------
@@ -172,6 +173,8 @@ int framebufferH = 0;
 
 // swap interval for the display context (vertical synchronization)
 int swapInterval = 1;
+
+
 
 
 //------------------------------------------------------------------------------
@@ -497,7 +500,8 @@ int main(int argc, char* argv[])
     /////////////////////////////////////////////////////////////////////////
 
     rim = new cMesh();
-    cCreatePipe(rim, 0.15, 0.05, 0.06, 32, 1);
+    cCreatePipe(rim, 0.08, 0.23, 0.24, 32, 1);
+    rim->setTransparencyLevel(0.0);
 
     /////////////////////////////////////////////////////////////////////////
     // VINYL OBJECT
@@ -509,7 +513,7 @@ int main(int argc, char* argv[])
     // build mesh using primitives
     cCreateCylinder(membrane, 0.01, 0.215, 36, 1, false, true);
     cCreateDisk(membrane, 0.215, 0.215, 36, cVector3d(0, 0, 0));
-    //membrane->setTransparencyLevel(0.0);
+    membrane->setTransparencyLevel(0.0);
     cVector3d min, max;
     body->computeBoundaryBox(true);
     min = body->getBoundaryMin();
@@ -528,7 +532,7 @@ int main(int argc, char* argv[])
     double drumZ = drumPos.z();
 
     membrane->setLocalPos(drumX, drumY, zDomain / 2);
-	rim->setLocalPos(drumX, drumY, zDomain / 2 + 1);
+	rim->setLocalPos(drumX, drumY, 0);
 
     // create texture image
     cTexture2dPtr drumImage = cTexture2d::create();
@@ -559,7 +563,7 @@ int main(int argc, char* argv[])
 
     // position vinyl
     membrane->translate(-0.0, 0, -0.065);
-	rim->translate(-0.0, 0, -2);
+	rim->translate(-0.0, 0, 0.12);
 
     // set stiffness properties
     membrane->setStiffness(0.5 * maxStiffness, true);
@@ -645,7 +649,7 @@ int main(int argc, char* argv[])
     //audioSourceRim->setLoop(true);
 
     // start playing
-    audioSourceRim->play();
+    //audioSourceRim->play();
 
 
     //--------------------------------------------------------------------------
@@ -897,6 +901,10 @@ void renderHaptics(void)
     simulationRunning = true;
     simulationFinished = false;
 
+
+    wasInContactLastFrameRim = false;
+    wasInContactLastFrameMem = false;
+
     // main haptic simulation loop
     while (simulationRunning)
     {
@@ -945,13 +953,12 @@ void renderHaptics(void)
 
         cVector3d toolForce = -tool->getDeviceGlobalForce();
 
-        bool wasInContactLastFrameMem = false;
+       
 
         bool isInContactNowMem = tool->isInContact(membrane);
+        
 
-        bool wasInContactLastFrameRim = false;
-
-        bool isInContactNowRim = tool->isInContact(body);
+        bool isInContactNowRim = tool->isInContact(rim);
 
 
         // figure out if we're touching the membrane
@@ -979,8 +986,9 @@ void renderHaptics(void)
             if (toolVelocity.length() > 0)
             {
                 // Restart tom.mp3 playback immediately on first contact
-                //audioSourceFwd->stop();  // Reset playback
+                
                 audioSourceFwd->setGain(toolVelocity.length() * 0.1);
+                audioSourceFwd->stop();  // Reset playback
                 //audioSourceFwd->setPitch(1.0);
                 audioSourceFwd->play();
                 
@@ -1039,10 +1047,13 @@ void renderHaptics(void)
             if (toolVelocity.length() > 0)
             {
                 // Restart tom.mp3 playback immediately on first contact
-                //audioSourceFwd->stop();  // Reset playback
-                audioSourceFwd->setGain(toolVelocity.length() * 0.1);
+                
+                audioSourceRim->setGain(toolVelocity.length() * 0.1);
+                audioSourceFwd->stop();  // Reset playback
                 //audioSourceFwd->setPitch(1.0);
-                audioSourceFwd->play();
+                audioSourceRim->play();
+                //Sleep(100);
+                
 			}
 
             /*
@@ -1056,6 +1067,7 @@ void renderHaptics(void)
             }
             */
         }
+        
       
 
         /*
