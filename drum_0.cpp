@@ -177,6 +177,9 @@ int swapInterval = 1;
 
 
 
+
+
+
 //------------------------------------------------------------------------------
 // DECLARED FUNCTIONS
 //------------------------------------------------------------------------------
@@ -218,6 +221,7 @@ void close(void);
 
 int main(int argc, char* argv[])
 {
+
     //--------------------------------------------------------------------------
     // INITIALIZATION
     //--------------------------------------------------------------------------
@@ -376,10 +380,13 @@ int main(int argc, char* argv[])
     light->setEnabled(true);
 
     // position the light source
-    light->setLocalPos(1.5, 0.40, 1.5);
+    light->setLocalPos(1, 0, 2);
 
     // define the direction of the light beam
-    light->setDir(-2.0, -0.5, -2.0);
+    light->setDir(-0.5, 0, -1);
+
+    light->m_diffuse.set(4.0, 4.0, 4.0);
+    light->m_specular.set(4.0, 4.0, 4.0);
 
     // enable this light source to generate shadows
     light->setShadowMapEnabled(true);
@@ -390,6 +397,8 @@ int main(int argc, char* argv[])
 
     // set light cone half angle
     light->setCutOffAngleDeg(30);
+
+
 
 
     //--------------------------------------------------------------------------
@@ -532,7 +541,7 @@ int main(int argc, char* argv[])
     double drumZ = drumPos.z();
 
     membrane->setLocalPos(drumX, drumY, zDomain / 2);
-	rim->setLocalPos(drumX, drumY, 0);
+    rim->setLocalPos(drumX, drumY, 0);
 
     // create texture image
     cTexture2dPtr drumImage = cTexture2d::create();
@@ -555,25 +564,25 @@ int main(int argc, char* argv[])
 
     // create collision detector
     membrane->createAABBCollisionDetector(toolRadius);
-	rim->createAABBCollisionDetector(toolRadius);
+    rim->createAABBCollisionDetector(toolRadius);
 
     // add vynil to world
     world->addChild(membrane);
-	world->addChild(rim);
+    world->addChild(rim);
 
     // position vinyl
     membrane->translate(-0.0, 0, -0.065);
-	rim->translate(-0.0, 0, 0.12);
+    rim->translate(-0.0, 0, 0.12);
 
     // set stiffness properties
     membrane->setStiffness(0.5 * maxStiffness, true);
-	rim->setStiffness(0.5 * maxStiffness, true);
+    rim->setStiffness(0.5 * maxStiffness, true);
 
     // set static and dynamic friction
     double staticFriction = (double)100 / 100.0;
     double dynamicFriction = (double)100 / 100.0;
     membrane->setFriction(staticFriction, dynamicFriction, true);
-	rim->setFriction(staticFriction, dynamicFriction, true);
+    rim->setFriction(staticFriction, dynamicFriction, true);
 
 
     /////////////////////////////////////////////////////////////////////////
@@ -669,10 +678,10 @@ int main(int argc, char* argv[])
     camera->m_backLayer->addChild(background);
 
     // set background properties
-    background->setCornerColors(cColorf(1.0f, 1.0f, 1.0f),
-        cColorf(1.0f, 1.0f, 1.0f),
-        cColorf(0.8f, 0.8f, 0.8f),
-        cColorf(0.8f, 0.8f, 0.8f));
+    background->setCornerColors(cColorf(0.0f, 0.0f, 0.0f),
+        cColorf(0.0f, 0.0f, 0.0f),
+        cColorf(0.0f, 0.0f, 0.0f),
+        cColorf(0.0f, 0.0f, 0.0f));
 
 
     //--------------------------------------------------------------------------
@@ -895,15 +904,21 @@ void renderHaptics(void)
     clock.reset();
     static cVector3d prevToolPos = tool->getDeviceGlobalPos();
     cVector3d currToolPos = tool->getDeviceGlobalPos();
-	static double prevTime = clock.getCurrentTimeSeconds();
+    static double prevTime = clock.getCurrentTimeSeconds();
 
     // simulation in now running
     simulationRunning = true;
     simulationFinished = false;
 
-
     wasInContactLastFrameRim = false;
     wasInContactLastFrameMem = false;
+
+    // stop the simulation clock
+    clock.stop();
+
+    // restart the simulation clock
+    clock.reset();
+    clock.start();
 
     // main haptic simulation loop
     while (simulationRunning)
@@ -912,15 +927,7 @@ void renderHaptics(void)
         // SIMULATION TIME
         /////////////////////////////////////////////////////////////////////
 
-        // stop the simulation clock
-        clock.stop();
 
-        // read the time increment in seconds
-        double timeInterval = clock.getCurrentTimeSeconds();
-
-        // restart the simulation clock
-        clock.reset();
-        clock.start();
 
         // signal frequency counter
         freqCounterHaptics.signal(1);
@@ -953,45 +960,52 @@ void renderHaptics(void)
 
         cVector3d toolForce = -tool->getDeviceGlobalForce();
 
-       
+
 
         bool isInContactNowMem = tool->isInContact(membrane);
-        
+
 
         bool isInContactNowRim = tool->isInContact(rim);
+
+        //prevToolPos = tool->getDeviceGlobalPos();
+        //prevTime = clock.getCurrentTimeSeconds();
 
 
         // figure out if we're touching the membrane
         if (isInContactNowMem && !wasInContactLastFrameMem)
         {
             wasInContactLastFrameMem = true;
+            audioSourceFwd->stop();  // Reset playback
+
             cVector3d currToolPos = tool->getDeviceGlobalPos();
             double currTime = clock.getCurrentTimeSeconds();
 
             // Compute velocity
-            double deltaTime = currTime - prevTime;
-            cVector3d toolVelocity(0, 0, 0);
-            if (deltaTime > 1e-6) {
-                toolVelocity = (currToolPos - prevToolPos) / deltaTime;
+            double deltaTime = abs(currTime - prevTime);
+            double toolVelocity(0);
+            cVector3d distance = currToolPos - prevToolPos;
+            if (deltaTime > 0) {
+                toolVelocity = (distance.length()) / deltaTime;
             }
-			cout << "Tool Velocity: " << toolVelocity << endl;
+            cout << "Tool Velocity: " << toolVelocity << endl;
+            cout << "deltaTime: " << deltaTime << endl;
+            cout << "distance: " << distance << endl;
 
             // Save for next iteration
             prevToolPos = currToolPos;
             prevTime = currTime;
             cVector3d toolForce = -tool->getDeviceGlobalForce();
-            //cout << "Force: " << toolForce.length() << endl;
+            cout << "Force: " << toolForce.length() << endl;
             //double impactThreshold = 0.5; // adjust sensitivity if needed
 
-            if (toolVelocity.length() > 0)
+            if (toolVelocity >= 0)
             {
                 // Restart tom.mp3 playback immediately on first contact
-                
-                audioSourceFwd->setGain(toolVelocity.length() * 0.1);
-                audioSourceFwd->stop();  // Reset playback
+
+                audioSourceFwd->setGain(toolForce.length() * 2.2);
                 //audioSourceFwd->setPitch(1.0);
                 audioSourceFwd->play();
-                
+
             }
             // Get global positions
             cVector3d toolPos = tool->getDeviceGlobalPos();
@@ -1015,7 +1029,7 @@ void renderHaptics(void)
                 * (rand() % max_rand)
                 / max_rand;
 
-            tool->setDeviceGlobalForce(random_double_x * bounceForceZ, random_double_y * bounceForceZ, bounceForceZ);
+            tool->setDeviceGlobalForce(random_double_x * -bounceForceZ, random_double_y * -bounceForceZ, -bounceForceZ);
             // Apply upward force only
             //cVector3d bounceForce(0.0, 0.0, bounceForceZ);
             //cVector3d basePos = membrane->getLocalPos();
@@ -1024,6 +1038,8 @@ void renderHaptics(void)
         else if (isInContactNowRim && !wasInContactLastFrameRim)
         {
             wasInContactLastFrameRim = true;
+            audioSourceRim->stop();  // Reset playback
+
             cVector3d toolForce = -tool->getDeviceGlobalForce();
             //cout << "Force: " << toolForce.length() << endl;
             //double impactThreshold = 0.5; // adjust sensitivity if needed
@@ -1033,7 +1049,7 @@ void renderHaptics(void)
             // Compute velocity
             double deltaTime = currTime - prevTime;
             cVector3d toolVelocity(0, 0, 0);
-            if (deltaTime > 1e-6) {
+            if (deltaTime > 0) {
                 toolVelocity = (currToolPos - prevToolPos) / deltaTime;
             }
             cout << "Tool Velocity: " << toolVelocity << endl;
@@ -1044,17 +1060,16 @@ void renderHaptics(void)
             //cout << "Force: " << toolForce.length() << endl;
             //double impactThreshold = 0.5; // adjust sensitivity if needed
 
-            if (toolVelocity.length() > 0)
+            if (toolVelocity.length() >= 0)
             {
                 // Restart tom.mp3 playback immediately on first contact
-                
-                audioSourceRim->setGain(toolVelocity.length() * 0.1);
-                audioSourceFwd->stop();  // Reset playback
+
+                audioSourceRim->setGain(toolForce.length() * 2.2);
                 //audioSourceFwd->setPitch(1.0);
                 audioSourceRim->play();
                 //Sleep(100);
-                
-			}
+
+            }
 
             /*
             if (toolForce.length() > 0)
@@ -1067,8 +1082,11 @@ void renderHaptics(void)
             }
             */
         }
-        
-      
+
+
+        wasInContactLastFrameRim = isInContactNowRim;
+        wasInContactLastFrameMem = isInContactNowMem;
+
 
         /*
 /////////////////////////////////////////////////////////////////////
